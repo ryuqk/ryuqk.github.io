@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <title>HTML5Experts.jp WebRTC再入門2016サンプル</title>
+</head>
+  githubは<a href="https://github.com/mganeko/webrtcexpjp">こちら</a>
+
+  <h3>HTML5Experts.jp WebRTC再入門2016サンプル</h3>
+  <h4>(1) カメラを使ってみよう</h4>
+  <ul>
+    <li>新しいAPIでカメラを使ってみよう <a target="_blank" href="camera_new.html">mediaDevice.getUserMedia</a> (Chromeはフラグ設定が必要）</li>
+    <li>新旧getUserMedia()をラップしてみよう <a target="_blank" href="camera_old_new.html">wrap old/new getUserMedia</a></li>
+    <li>CSS3と組み合わせてみよう <a target="_blank" href="camera_css_wrap.html">getUserMedia and CSS</a></li>
+  </ul>
+
+  <h4>(2) 手動でシグナリングをやってみよう</h4>
+  <ul>
+    <li>基本の手動シグナリング <a target="_blank" href="hand_signaling.html">手動シグナリング(Vanilla ICE)</a></li>
+  </ul>
+  <h4>手動シグナリング番外編</h4>
+  <ul>
+    <li>Safari TP32でも動く、ontrack/addTrack対応版 <a target="_blank" href="hand_signaling_track.html">ontrack/addTrack対応手動シグナリング</a></li>
+    <li>adapter.jsを使って手動シグナリング <a target="_blank" href="hand_signaling_adapter.html">adapter.jsで手動シグナリング</a></li>
+    <li>手動シグナリングでSDPを変更 <a target="_blank" href="hand_signaling_modify.html">手動シグナリングでSDP変更</a></li>
+  </ul>
+  
+  <h4>(3) WebSocketを使ったシグナリングサーバーを使おう</h4>
+  <ul>
+    <li>WebSocketを使ったシグナリング<a target="_blank" href="http://mganeko.github.io/webrtcexpjp/basic2016/ws_signaling_1to1_vanilla.html">自動シグナリング(Vanilla ICE)</a> (※このまま動くのはFirefoxのみ）</li>
+    <li>WebSocketを使ったシグナリング<a target="_blank" href="http://mganeko.github.io/webrtcexpjp/basic2016/ws_signaling_1to1_trickle.html">自動シグナリング(Trickle ICE)</a> (※このまま動くのはFirefoxのみ）</li>
+    <li>node.js用シグナリングサーバーのコード<a target="_blank" href="https://github.com/mganeko/webrtcexpjp/blob/master/basic2016/server/signaling.js">signaling.js</a></li>
+    <li>Chrome appの簡易WebSocketサーバー<a target="_blank" href="https://chrome.google.com/webstore/detail/simple-message-server/bihajhgkmpfnmbmdnobjcdhagncbkmmp">Simple Message Server</a></li>
+  </ul>
+
+  <h4>(4) シグナリングを拡張して、多人数でビデオチャットしよう</h4>
+  <ul>
+    <li>socket.ioを使って、多人数ビデオチャット<a target="_blank" href="http://mganeko.github.io/webrtcexpjp/basic2016/multi.html">多会議室、多人数対応ビデオチャット</a> (※このまま動くのはFirefoxのみ）</li>
+    <li>node.jsとsocket.ioを使った、多会議室、多人数対応のシグナリングサーバーのコード<a target="_blank" href="https://github.com/mganeko/webrtcexpjp/blob/master/basic2016/server/signaling_room.js">signaling_room.js</a></li>
+  </ul>
+
+  <h4>(5) 番外編：Firebaseで楽々シグナリング </h4>
+  <ul>
+    <li>Firebaseを使ってシグナリングを行う多人数ビデオチャット<a target="_blank" href="multi_firebase.html">Firebaseを使った多人数ビデオチャット</a> (Chrome, Firefoxどちらも動作）</li>
+    <li>Firebaseを使ってシグナリング、adapter.jsでEdge同志の通信も可能<a target="_blank" href="multi_firebase_adapter.html"> adapter.js を利用して、Edge同志でも多人数ビデオチャット</a> (Chrome, Firefoxどちらも動作）</li>
+  </ul>
+
+  <h4>(6) 番外編：シグナリングサーバー不要 - BroadcastChannelを使ったシグナリング </h4>
+  <ul>
+    <li>BroadcastChannelを使ったシグナリングを行う多人数ビデオチャット<a target="_blank" href="multi_bc.html">
+      BroadcastChannelを使った多人数ビデオチャット</a> (同一マシンのChrome間, Firefox間で動作）
+    </li>
+  </ul>
+
+
+  <h4>(7) 番外編：最新のWebRTCのtrack系処理を、手動＋データチャネルシグナリングで観察してみる </h4>
+  <ul>
+    <li>手動シグナリング+DataChannelシグナリングでtrackを操る<a target="_blank" href="datachannel_signaling_track.html">
+      addTrack()/removeTrack()を使い、ontrack(), onremovetrack()に対応</a> 
+    </li>
+    <li>
+      Qiitaの記事：<a target="_blank"  href="https://qiita.com/massie_g/items/1316eb8c6e0d171307f5">最新のWebRTCのtrack系処理を、手動＋データチャネルシグナリングで観察してみる</a>
+    </li>
+  </ul>
+
+  <h4>(8) 番外編： addTrack()/ontrack()、multi-stream時代の DataChannelシグナリング (2018.08) </h4>
+  <ul>
+    <li><a target="_blank" href="dc_signaling_multistream.html">
+      DataChannelのよる1:1シグナリング、multi-stream、addTrack()/ontrack()対応</a> (同一マシンのChrome間, Firefox間で動作）
+    </li>
+    <ul>
+      <li>
+        BroadcastChannelを使って初期シグナリングでDataChannelを確立、その後はDataChannelを介してシグナリング
+      </li>
+      <li>
+        ※BroadcastChannelのチェックを外せば、手動シグナリングも可能（Chrome - Firefox間）
+      </li>
+      <li>
+        addTrack()/removeTrack(), peer.ontrack(), stream.onremovetrack()を利用
+      </li>
+      <li>
+        Firefoxと, Chrome 70〜で利用できる、Unified Planを用いたmulti-streamに対応
+      </li>  
+    </ul>
+  </ul>
+
+
+  <hr />
+</html>

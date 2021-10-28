@@ -1,0 +1,539 @@
+<!doctype html>
+<html lang="ja">
+<head>
+ <meta charset="UTF-8" />
+ <title>Hand & DataCannel Signaling</title>
+</head>
+<body>
+  DataChannel signaling after Hand 2018<br />
+  <button type="button" onclick="connect(true);">Connect Datachannel by hand</button>
+  <button type="button" onclick="hangUp();">Hang Up</button>
+  &nbsp;
+  <button type="button" onclick="sendData({ type: 'text', body: 'hello' });">send hello</button>
+  <br />
+  <button type="button" onclick="startVideo();">Start Media</button>
+  <button type="button" onclick="stopVideo();">Stop Media</button>
+  &nbsp;
+  <button type="button" onclick="addTrack('video');">add Video</button>
+  <button type="button" onclick="addTrack('audio');">add Audo</button>
+  <button type="button" onclick="removeTrack('video');">remove Video</button>
+  <button type="button" onclick="removeTrack('audio');">remove Audo</button>
+  <div>
+    <video id="local_video" autoplay style="width: 160px; height: 120px; border: 1px solid black;"></video>
+    <video id="remote_video" autoplay style="width: 160px; height: 120px; border: 1px solid black;"></video>
+  </div>
+  <p>SDP to send:&nbsp;
+    <button type="button" onclick="copySdp();">copy local SDP</button>
+    <input type="checkbox" id="use_broadcast_channel" checked="1">use BroadcastChannel(without hand)</input>
+    <br />
+    <textarea id="text_for_send_sdp" rows="5" cols="60" readonly="readonly">SDP to send</textarea>
+  </p>
+  <p>SDP to receive:&nbsp;
+    <button type="button" onclick="onSdpText();">Receive remote SDP</button><br />
+    <textarea id="text_for_receive_sdp" rows="5" cols="60"></textarea>
+  </p>
+</body>
+<script>
+  // TODO
+  //   - DONE: async/await
+  //   - DONE: gUM
+  //   - DONE: addTrack / ontrack (same stream)
+  //   - addTrack / ontrack  (different stream)
+  //   - sudo video with canvas, sudo auido with webaudio 
+  //   - broadband channel
+
+
+  let localStream = null;
+  let remoteStream = null;
+  let peerConnection = null;
+  let dataChannel = null;
+  const localVideo = document.getElementById('local_video');
+  const remoteVideo = document.getElementById('remote_video');
+  const textForSendSdp = document.getElementById('text_for_send_sdp');
+  const textToReceiveSdp = document.getElementById('text_for_receive_sdp');
+  let senders = [];
+
+
+  function _logStream(msg, stream) {
+    console.log(msg + ': id=' + stream.id);
+    let videoTracks = stream.getVideoTracks();
+    if (videoTracks) {
+      console.log('videoTracks.length=' + videoTracks.length);
+      videoTracks.forEach(function(track) {
+        console.log(' track.id=' + track.id);
+      });
+    }
+    
+    let audioTracks = stream.getAudioTracks();
+    if (audioTracks) {
+      console.log('audioTracks.length=' + audioTracks.length);
+      audioTracks.forEach(function(track) {
+        console.log(' track.id=' + track.id);
+      });
+    }
+  }
+
+  function isOfferSide() {
+    if (peerConnection) {
+      return true;
+    }
+    else {
+      return false;
+    }
+  }
+
+  // --- broadcast channel
+  const channelName = 'myroom';
+  const broadcast = new BroadcastChannel(channelName);
+
+  function useBroadcastChannel() {
+    let boradcastChecked = document.getElementById('use_broadcast_channel').checked;
+    if (! boradcastChecked) {
+      return false; // do not use broadcastChannel
+    }
+
+    if (! dataChannel) {
+      return true; // no datachannel, use broadcastChannel
+    }
+
+    if (dataChannel.readyState === 'open') {
+      return false; // datachannel ready, use it
+    }
+
+    return true;
+  }
+
+  // メッセージのハンドリング
+  broadcast.onmessage = function(evt) {
+    let messageObject = JSON.parse(evt.data);
+
+    // ... メッセージに応じた処理 ...
+    if (messageObject.type === 'offer') {
+      console.log('get Offer over broadcastChannel');
+      textToReceiveSdp.value = messageObject.sdp;
+      let offer = new RTCSessionDescription({
+        type : messageObject.type,
+        sdp : messageObject.sdp,
+      });
+      if (! peerConnection) {
+        const withDataChannel = true;
+        peerConnection = prepareNewConnection(withDataChannel);
+      }
+      const sendNow = false;
+      setOffer(offer, sendNow);      
+    }
+    else if (messageObject.type === 'answer') {
+      console.log('Received answer over broadcastChannel');
+      textToReceiveSdp.value = messageObject.sdp;
+      description = new RTCSessionDescription({
+        type : messageObject.type,
+        sdp : messageObject.sdp,
+      });
+      setAnswer(description);
+    }
+  }
+
+  // メッセージの送信
+  //let messageString = JSON.stringify(messageObject);
+  //broadcast.postMessage(messageString );
+
+  // 切断
+  //broadcast.close();
+
+  // ----- hand signaling ----
+  function onSdpText() {
+    let text = textToReceiveSdp.value;
+    text = _trimTailDoubleLF(text); // for Safar TP --> Chrome
+    if (isOfferSide()) {
+      console.log('Received answer text...');
+      description = new RTCSessionDescription({
+        type : 'answer',
+        sdp : text,
+      });
+      setAnswer(description);
+    }
+    else {
+      console.log('Received offer text...');
+      let offer = new RTCSessionDescription({
+        type : 'offer',
+        sdp : text,
+      });
+      if (! peerConnection) {
+        const withDataChannel = true;
+        peerConnection = prepareNewConnection(withDataChannel);
+      }
+      const sendNow = false;
+      setOffer(offer, sendNow);
+    }
+    textToReceiveSdp.value ='';
+  }
+ 
+  function sendSdp(sessionDescription) {
+    console.log('---sending sdp ---');
+    textForSendSdp.value = sessionDescription.sdp;
+    textForSendSdp.focus();
+    textForSendSdp.select();
+
+    if (useBroadcastChannel()) {
+      const messageString = JSON.stringify(sessionDescription);
+      broadcast.postMessage(messageString);
+    }
+  }
+
+  function copySdp() {
+    textForSendSdp.focus();
+    textForSendSdp.select();
+    document.execCommand('copy');
+  }
+
+  function _trimTailDoubleLF(str) {
+    const trimed = str.trim();
+    return trimed + String.fromCharCode(13, 10);
+  }
+
+  function sendSdpOverDataChannel(sessionDescription) {
+    console.log('--- sending sdp over dataChannel --');
+    if (! dataChannel) {
+      return;
+    }
+    const str = JSON.stringify(sessionDescription);
+    dataChannel.send(str);
+
+    // also show in textArea
+    textForSendSdp.value = sessionDescription.sdp;
+    textForSendSdp.select();
+  }
+
+  function prepareNewConnection(withDataChannel) {
+    let pc_config = {"iceServers":[]};
+    pc_config.sdpSemantics = "unified-plan";
+    let peer = new RTCPeerConnection(pc_config);
+
+    // --- on get local ICE candidate
+    peer.onicecandidate = function (evt) {
+      if (evt.candidate) {
+        console.log(evt.candidate);
+
+        // Trickle ICE の場合は、ICE candidateを相手に送る
+        // Vanilla ICE の場合には、何もしない
+      } else {
+        console.log('empty ice event');
+
+        // Trickle ICE の場合は、何もしない
+        // Vanilla ICE の場合には、ICE candidateを含んだSDPを相手に送る
+        sendSdp(peer.localDescription);
+      }
+    };
+    
+    peer.onnegotiationneeded = function (evt) {
+      console.log('onnegotiationneeded:', evt);
+      if (! dataChannel) {
+        return;
+      }
+      if ( (! peer.localDescription) || (! peer.localDescription.type) || (peer.localDescription.type === '')) {
+        return;
+      }
+      if ( (! peer.remoteDescription) || (! peer.remoteDescription.type) || (peer.remoteDescription.type === '')) {
+        return;
+      }
+
+      const sendNow = true;
+      makeOffer(sendNow);
+    }
+
+    peer.ontrack = function(event) {
+      console.log('-- peer.ontrack(): track kind=' + event.track.kind);
+      let stream = event.streams[0];
+      _logStream('ontrack stream', stream);
+      if (event.streams.length > 1) {
+        console.warn('got multi-stream count=' + event.streams.length + ', but play only 1 stream');
+        let stream2 = event.streams[1];
+        _logStream('ontrack stream2', stream);
+      }
+      let track = event.track;
+      if (track.kind === 'video') {
+        if (! remoteStream) {
+          remoteStream = stream;
+          remoteVideo.srcObject = stream;
+          remoteVideo.play();
+          remoteVideo.volume = 0;
+        }
+        else if (remoteStream === stream) {
+          console.log('same remoteStream, addTrack(video)');
+        }
+        else {
+          console.warn('different remoteStream, addTrack(video)');
+        }
+      }
+      else if (track.kind === 'audio') {
+        if (! remoteStream) {
+          remoteStream = stream;
+          remoteVideo.srcObject = stream;
+          remoteVideo.play();
+          remoteVideo.volume = 0;
+        }
+        else if (remoteStream === stream) {
+          console.log('same remoteStream, addTrack(audio)');
+        }
+        else {
+          console.warn('different remoteStream, addTrack(audio)');
+        }
+      }
+
+      stream.onaddtrack = function (evt) {
+        _logStream('stream.onaddtrack', stream);
+        const track = evt.track;
+        console.log('stream.onaddtrack(): track kind=', track.kind);
+        if (track.kind === 'video') {
+          //playVideo(remoteVideo, stream);
+        }
+        else if (track.kind === 'audio') {
+          //playVideo(remoteAudio, stream);
+          //remoteAudio.volume = 0.5;
+        }
+      };
+      stream.onremovetrack = function (evt) {
+        _logStream('stream.onremovetrack', stream);
+        //console.log('stream.onremovetrack():', evt);
+        const track = evt.track;
+        console.log('stream.onremovetrack(): track kind=', track.kind);
+        const tracks = stream.getTracks();
+        const trackCount = tracks.length;
+        console.log('onremovetrack tracks.lenght=' + trackCount);
+        /*
+        if (track.kind === 'video') {
+          //pauseVideo(remoteVideo);
+        }
+        else if (track.kind === 'audio') {
+          //pauseVideo(remoteAudio);
+        }
+        */
+        if (trackCount < 1) {
+          console.log('----remote stream stoped---');
+          remoteVideo.pause();
+          remoteVideo.srcObject = null;
+          remoteStream = null;
+        }
+      };
+    }
+      
+    if (withDataChannel) {
+      console.log('start for DataChannel');
+      peer.ondatachannel = function (evt) {
+        console.log('-- datachannel --');
+        if (dataChannel) {
+          console.warn('dataChannel ALREAY EXIST');
+        }
+        dc = evt.channel;
+        setupDataChannel(dc);
+        dataChannel = dc;
+      }
+    }
+
+    return peer;
+  }
+
+  function prepareDataChannel(peer) {
+    const dc = peer.createDataChannel("channel");
+    setupDataChannel(dc);
+    dataChannel = dc;
+    return dc;
+  }
+
+  function setupDataChannel(dc) {
+    dc.onmessage = function (evt) {
+      const msg = evt.data;
+      const obj = JSON.parse(msg);
+      if (obj.type === 'text') {
+        console.log('text Message over DataChannel:', msg);
+      }
+      else if (obj.type === 'offer') {
+        console.log('--got offer over dataChannel--');
+        const sendNow = true;
+        setOffer(obj, sendNow);
+      }
+      else if (obj.type === 'answer') {
+        console.log('--got answer over dataChannel--');
+        setAnswer(obj);            
+      }
+    };
+
+    dc.onopen = function (evt) {
+      console.log('datachannel open');
+    };
+    dc.onclose = function (evt) {
+      dataChannel = null;
+    };
+    dc.onerror = function (evt) {
+      console.error('DataChannel ERROR:', err);
+    };
+  }
+
+  function startOffer(withDataChannel) {
+    peerConnection = prepareNewConnection(withDataChannel);
+    if (withDataChannel) {
+      prepareDataChannel(peerConnection);
+    }
+    const sendNow = false;
+    makeOffer(sendNow);
+  }
+
+  async function makeOffer(sendNow) {
+    let options = {};
+    try {
+      const sessionDescription = await peerConnection.createOffer(options);
+      await peerConnection.setLocalDescription(sessionDescription);
+
+      // -- Trickle ICE の場合は、初期SDPを相手に送る -- 
+      // -- Vanilla ICE の場合には、まだSDPは送らない --
+      //sendSdp(peerConnection.localDescription);
+
+      // --- sendNow = true が指定されたら、すぐにdataChannel越しに送る --
+      if (sendNow) {
+        sendSdpOverDataChannel(peerConnection.localDescription);
+      }
+    }
+    catch (err) {
+      console.error(err);
+    }
+  }
+
+
+  async function setOffer(sessionDescription, sendNow) {
+    try {
+      await peerConnection.setRemoteDescription(sessionDescription);
+      await makeAnswer(sendNow);
+    }
+    catch (err) {
+      console.error(err);
+    }
+  }
+
+  async function setAnswer(sessionDescription) {
+    if (! peerConnection) {
+      console.error('peerConnection NOT exist!');
+      return;
+    }
+
+    await peerConnection.setRemoteDescription(sessionDescription).catch(err => console.error(err));
+  }
+
+  async function makeAnswer(sendNow) {
+    console.log('sending Answer. Creating remote session description...' );
+    if (! peerConnection) {
+      console.error('peerConnection NOT exist!');
+      return;
+    }
+
+    let options = {};
+    try {
+      const sessionDescription = await peerConnection.createAnswer(options);
+      await peerConnection.setLocalDescription(sessionDescription);
+      if (sendNow) {
+        sendSdpOverDataChannel(peerConnection.localDescription);
+      }
+    }
+    catch (err) {
+      console.error(err);
+    }
+  }
+
+  function addTrack(kind) {
+    if (! localStream) {
+      return;
+    }
+    if (! peerConnection) {
+      return;
+    }
+
+    let track = null;
+    if (kind === 'video') {
+      track = localStream.getVideoTracks()[0];
+    }
+    else if (kind === 'audio') {
+      track = localStream.getAudioTracks()[0];      
+    }
+
+    // let sender = peerConnection.addTrack(track); // another stream in chrome, error in firefox
+    let sender = peerConnection.addTrack(track, localStream); // same stream
+    senders[kind] = sender;
+  }
+
+  function removeTrack(kind) {
+    console.log('removing track kind=' + kind);
+    if (! localStream) {
+      return;
+    }
+    if (! peerConnection) {
+      return;
+    }
+
+    let sender = senders[kind];
+    if (sender) {
+      peerConnection.removeTrack(sender);
+      delete senders[kind];
+      sender = null;
+    }
+    else {
+      console.warn('NO sender for kind=' + kind);
+    }
+  }
+
+  // start PeerConnection
+  function connect(withDataChannel) {
+    if (! peerConnection) {
+      console.log('start Offer');
+      startOffer(withDataChannel);
+    }
+    else {
+      console.warn('peer already exist.');
+    }
+  }
+
+  // close PeerConnection
+  function hangUp() {
+    if (peerConnection) {
+      console.log('Hang up.');
+      peerConnection.close();
+      peerConnection = null;
+      //pauseVideo(remoteVideo);
+    }
+    else {
+      console.warn('peer NOT exist.');
+    }
+  }
+
+  function sendData(data) {
+    if (dataChannel) {
+      const str = JSON.stringify(data);
+      dataChannel.send(str);
+    }
+  }
+
+  async function startVideo() {
+    const option = {video: true, audio: true};
+    const stream = await navigator.mediaDevices.getUserMedia(option)
+    localStream = stream;
+    localVideo.srcObject = localStream;
+    localVideo.play();
+    localVideo.volume = 0;
+  }
+
+  function stopVideo() {
+    localVideo.pause();
+    localVideo.srcObject = null;
+    if (localStream) {
+      stopLocalStream(localStream);
+      localStream = null;
+    }
+  }
+
+  function stopLocalStream(stream) {
+    let tracks = stream.getTracks();
+    for (let track of tracks) {
+      track.stop();
+    }
+  }
+
+</script>
+</html>
